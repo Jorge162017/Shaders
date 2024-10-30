@@ -18,6 +18,10 @@
 
 ![Image](images/Emisiva.gif)
 
+# Shader 6 - Pelota de basketball
+
+![Image](images/basketball.gif)
+
 Happy coding!
 
 ---
