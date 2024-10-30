@@ -18,7 +18,7 @@ use obj::Obj;
 use camera::Camera;
 use triangle::triangle;
 use shaders::{vertex_shader, fragment_shader};
-use fastnoise_lite::{FastNoiseLite, NoiseType, FractalType};
+use fastnoise_lite::{FastNoiseLite, NoiseType};
 
 pub struct Uniforms {
     model_matrix: Mat4,
@@ -26,14 +26,12 @@ pub struct Uniforms {
     projection_matrix: Mat4,
     viewport_matrix: Mat4,
     time: u32,
-    noise: FastNoiseLite
+    noise: FastNoiseLite,
+    is_mars: bool,
+    is_moon: bool,
 }
 
 fn create_noise() -> FastNoiseLite {
-    create_cloud_noise()
-}
-
-fn create_cloud_noise() -> FastNoiseLite {
     let mut noise = FastNoiseLite::with_seed(1337);
     noise.set_noise_type(Some(NoiseType::OpenSimplex2));
     noise
@@ -77,7 +75,6 @@ fn create_model_matrix(translation: Vec3, scale: f32, rotation: Vec3) -> Mat4 {
     transform_matrix * rotation_matrix
 }
 
-
 fn create_view_matrix(eye: Vec3, center: Vec3, up: Vec3) -> Mat4 {
     look_at(&eye, &center, &up)
 }
@@ -101,14 +98,12 @@ fn create_viewport_matrix(width: f32, height: f32) -> Mat4 {
 }
 
 fn render(framebuffer: &mut Framebuffer, uniforms: &Uniforms, vertex_array: &[Vertex]) {
-    // Vertex Shader
     let mut transformed_vertices = Vec::with_capacity(vertex_array.len());
     for vertex in vertex_array {
         let transformed = vertex_shader(vertex, uniforms);
         transformed_vertices.push(transformed);
     }
 
-    // Primitive Assembly
     let mut triangles = Vec::new();
     for i in (0..transformed_vertices.len()).step_by(3) {
         if i + 2 < transformed_vertices.len() {
@@ -120,13 +115,11 @@ fn render(framebuffer: &mut Framebuffer, uniforms: &Uniforms, vertex_array: &[Ve
         }
     }
 
-    // Rasterization
     let mut fragments = Vec::new();
     for tri in &triangles {
         fragments.extend(triangle(&tri[0], &tri[1], &tri[2]));
     }
 
-    // Fragment Processing
     for fragment in fragments {
         let x = fragment.position.x as usize;
         let y = fragment.position.y as usize;
@@ -149,7 +142,7 @@ fn main() {
 
     let mut framebuffer = Framebuffer::new(framebuffer_width, framebuffer_height);
     let mut window = Window::new(
-        "Animated Fragment Shader",
+        "Animated Fragment Shader - Mars and Moons",
         window_width,
         window_height,
         WindowOptions::default(),
@@ -159,22 +152,23 @@ fn main() {
     window.set_position(500, 500);
     window.update();
 
-    framebuffer.set_background_color(0x333355);
+    framebuffer.set_background_color(0x000000);
 
-    // model position
-    let translation = Vec3::new(0.0, 0.0, 0.0);
-    let rotation = Vec3::new(0.0, 0.0, 0.0);
-    let scale = 1.0f32;
+    let mars_translation = Vec3::new(0.0, 0.0, 0.0);
+    let mars_rotation = Vec3::new(0.0, 0.0, 0.0);
+    let mars_scale = 1.0;
 
-    // camera parameters
+    let moon_scale = 0.2;
+    let moon_distance = 1.5;
+
     let mut camera = Camera::new(
         Vec3::new(0.0, 0.0, 5.0),
         Vec3::new(0.0, 0.0, 0.0),
         Vec3::new(0.0, 1.0, 0.0)
     );
 
-    let obj = Obj::load("assets/models/sphere.obj").expect("Failed to load obj");
-    let vertex_arrays = obj.get_vertex_array(); 
+    let mars_obj = Obj::load("assets/models/sphere.obj").expect("Failed to load sphere.obj");
+    let mars_vertex_array = mars_obj.get_vertex_array();
     let mut time = 0;
 
     while window.is_open() {
@@ -188,23 +182,59 @@ fn main() {
 
         framebuffer.clear();
 
-        let noise = create_noise();
-        let model_matrix = create_model_matrix(translation, scale, rotation);
-        let view_matrix = create_view_matrix(camera.eye, camera.center, camera.up);
-        let projection_matrix = create_perspective_matrix(window_width as f32, window_height as f32);
-        let viewport_matrix = create_viewport_matrix(framebuffer_width as f32, framebuffer_height as f32);
-        let uniforms = Uniforms { 
-            model_matrix, 
-            view_matrix, 
-            projection_matrix, 
-            viewport_matrix,
+        // Renderizar Marte
+        let mars_model_matrix = create_model_matrix(mars_translation, mars_scale, mars_rotation);
+        let mars_view_matrix = create_view_matrix(camera.eye, camera.center, camera.up);
+        let mars_projection_matrix = create_perspective_matrix(window_width as f32, window_height as f32);
+        let mars_viewport_matrix = create_viewport_matrix(framebuffer_width as f32, framebuffer_height as f32);
+
+        let mars_uniforms = Uniforms {
+            model_matrix: mars_model_matrix,
+            view_matrix: mars_view_matrix,
+            projection_matrix: mars_projection_matrix,
+            viewport_matrix: mars_viewport_matrix,
             time,
-            noise
+            noise: create_noise(),
+            is_mars: true,
+            is_moon: false,
         };
 
-
         framebuffer.set_current_color(0xFFDDDD);
-        render(&mut framebuffer, &uniforms, &vertex_arrays);
+        render(&mut framebuffer, &mars_uniforms, &mars_vertex_array);
+
+        // Renderizar Fobos
+        let fobos_translation = Vec3::new(moon_distance * (time as f32 * 0.01).cos(), 0.0, moon_distance * (time as f32 * 0.01).sin());
+        let fobos_model_matrix = create_model_matrix(fobos_translation, moon_scale, mars_rotation);
+
+        let fobos_uniforms = Uniforms {
+            model_matrix: fobos_model_matrix,
+            view_matrix: mars_view_matrix,
+            projection_matrix: mars_projection_matrix,
+            viewport_matrix: mars_viewport_matrix,
+            time,
+            noise: create_noise(),
+            is_mars: false,
+            is_moon: true,
+        };
+
+        render(&mut framebuffer, &fobos_uniforms, &mars_vertex_array);
+
+        // Renderizar Deimos
+        let deimos_translation = Vec3::new((moon_distance * 1.5) * (time as f32 * 0.015).cos(), 0.0, (moon_distance * 1.5) * (time as f32 * 0.015).sin());
+        let deimos_model_matrix = create_model_matrix(deimos_translation, moon_scale, mars_rotation);
+
+        let deimos_uniforms = Uniforms {
+            model_matrix: deimos_model_matrix,
+            view_matrix: mars_view_matrix,
+            projection_matrix: mars_projection_matrix,
+            viewport_matrix: mars_viewport_matrix,
+            time,
+            noise: create_noise(),
+            is_mars: false,
+            is_moon: true,
+        };
+
+        render(&mut framebuffer, &deimos_uniforms, &mars_vertex_array);
 
         window
             .update_with_buffer(&framebuffer.buffer, framebuffer_width, framebuffer_height)
@@ -216,46 +246,43 @@ fn main() {
 
 fn handle_input(window: &Window, camera: &mut Camera) {
     let movement_speed = 1.0;
-    let rotation_speed = PI/50.0;
+    let rotation_speed = PI / 50.0;
     let zoom_speed = 0.1;
-   
-    //  camera orbit controls
+
     if window.is_key_down(Key::Left) {
-      camera.orbit(rotation_speed, 0.0);
+        camera.orbit(rotation_speed, 0.0);
     }
     if window.is_key_down(Key::Right) {
-      camera.orbit(-rotation_speed, 0.0);
+        camera.orbit(-rotation_speed, 0.0);
     }
     if window.is_key_down(Key::W) {
-      camera.orbit(0.0, -rotation_speed);
+        camera.orbit(0.0, -rotation_speed);
     }
     if window.is_key_down(Key::S) {
-      camera.orbit(0.0, rotation_speed);
+        camera.orbit(0.0, rotation_speed);
     }
 
-    // Camera movement controls
     let mut movement = Vec3::new(0.0, 0.0, 0.0);
     if window.is_key_down(Key::A) {
-      movement.x -= movement_speed;
+        movement.x -= movement_speed;
     }
     if window.is_key_down(Key::D) {
-      movement.x += movement_speed;
+        movement.x += movement_speed;
     }
     if window.is_key_down(Key::Q) {
-      movement.y += movement_speed;
+        movement.y += movement_speed;
     }
     if window.is_key_down(Key::E) {
-      movement.y -= movement_speed;
+        movement.y -= movement_speed;
     }
     if movement.magnitude() > 0.0 {
-      camera.move_center(movement);
+        camera.move_center(movement);
     }
 
-    // Camera zoom controls
     if window.is_key_down(Key::Up) {
-      camera.zoom(zoom_speed);
+        camera.zoom(zoom_speed);
     }
     if window.is_key_down(Key::Down) {
-      camera.zoom(-zoom_speed);
+        camera.zoom(-zoom_speed);
     }
 }
