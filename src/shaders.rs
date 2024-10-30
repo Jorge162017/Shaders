@@ -1,13 +1,9 @@
-
-use nalgebra_glm::{Vec3, Vec4, Mat3, dot, mat4_to_mat3};
+use nalgebra_glm::{Vec3, Vec4, Mat3, mat4_to_mat3};
 use crate::vertex::Vertex;
 use crate::Uniforms;
 use crate::fragment::Fragment;
 use crate::color::Color;
-use std::f32::consts::PI;
 use rand::Rng;
-use rand::SeedableRng;
-use rand::rngs::StdRng;
 
 pub fn vertex_shader(vertex: &Vertex, uniforms: &Uniforms) -> Vertex {
     let position = Vec4::new(
@@ -45,146 +41,37 @@ pub fn vertex_shader(vertex: &Vertex, uniforms: &Uniforms) -> Vertex {
 }
 
 pub fn fragment_shader(fragment: &Fragment, uniforms: &Uniforms) -> Color {
-    black_and_white(fragment, uniforms)
-    // dalmata_shader(fragment, uniforms)
-    // cloud_shader(fragment, uniforms)
-    // cellular_shader(fragment, uniforms)
-    // lava_shader(fragment, uniforms)
+    pastel_planet_shader(fragment, uniforms)
 }
 
-fn black_and_white(fragment: &Fragment, uniforms: &Uniforms) -> Color {
-    let seed = uniforms.time as f32 * fragment.vertex_position.y * fragment.vertex_position.x;
-  
-    let mut rng = StdRng::seed_from_u64(seed.abs() as u64);
-  
-    let random_number = rng.gen_range(0..=100);
-  
-    let black_or_white = if random_number < 50 {
-      Color::new(0, 0, 0)
-    } else {
-      Color::new(255, 255, 255)
-    };
-  
-    black_or_white * fragment.intensity
+/// Shader para simular el planeta pastel con nubes difusas y tonos intensos
+fn pastel_planet_shader(fragment: &Fragment, uniforms: &Uniforms) -> Color {
+    let position = fragment.vertex_position;
+
+    // Colores base de la superficie del planeta, usando un degradado de rosa intenso a verde-azulado intenso
+    let pink = Color::new(255, 105, 180); // Rosa intenso
+    let teal = Color::new(0, 206, 209); // Verde-azulado (celeste) intenso
+
+    // Interpolación para el degradado entre rosa y verde-azulado según la posición en Y
+    let base_color = pink.lerp(&teal, (position.y + 1.0) / 2.0); // Normalizamos y a rango [0, 1]
+
+    // Color de las nubes
+    let cloud_color = Color::new(255, 245, 238); // Blanco cálido para las nubes
+
+    // Generación de nubes difusas en la franja central
+    let cloud_density = (position.y * 3.0).sin() * (position.x * 3.0).cos(); // Densidad de nubes
+    let noise_factor = cloud_noise(position.x, position.y, uniforms.time as f32 * 0.1);
+    let cloud_opacity = ((cloud_density + noise_factor) * 0.6).clamp(0.0, 1.0); // Aumentamos el valor de opacidad
+
+    // Mezcla de color base y nubes según la opacidad calculada
+    let final_color = base_color.lerp(&cloud_color, cloud_opacity);
+
+    final_color
 }
-  
-fn dalmata_shader(fragment: &Fragment, uniforms: &Uniforms) -> Color {
-    let zoom = 100.0;
-    let ox = 0.0;
-    let oy = 0.0;
-    let x = fragment.vertex_position.x;
-    let y = fragment.vertex_position.y;
-  
-    let noise_value = uniforms.noise.get_noise_2d(
-      (x + ox) * zoom,
-      (y + oy) * zoom,
-    );
-  
-    let spot_threshold = 0.5;
-    let spot_color = Color::new(255, 255, 255); // White
-    let base_color = Color::new(0, 0, 0); // Black
-  
-    let noise_color = if noise_value < spot_threshold {
-      spot_color
-    } else {
-      base_color
-    };
-  
-    noise_color * fragment.intensity
-}
-  
-fn cloud_shader(fragment: &Fragment, uniforms: &Uniforms) -> Color {
-    let zoom = 100.0;  // to move our values 
-    let ox = 100.0; // offset x in the noise map
-    let oy = 100.0;
-    let x = fragment.vertex_position.x;
-    let y = fragment.vertex_position.y;
-    let t = uniforms.time as f32 * 0.5;
-  
-    let noise_value = uniforms.noise.get_noise_2d(x * zoom + ox + t, y * zoom + oy);
-  
-    // Define cloud threshold and colors
-    let cloud_threshold = 0.5; // Adjust this value to change cloud density
-    let cloud_color = Color::new(255, 255, 255); // White for clouds
-    let sky_color = Color::new(30, 97, 145); // Sky blue
-  
-    // Determine if the pixel is part of a cloud or sky
-    let noise_color = if noise_value > cloud_threshold {
-      cloud_color
-    } else {
-      sky_color
-    };
-  
-    noise_color * fragment.intensity
-}
-  
-fn cellular_shader(fragment: &Fragment, uniforms: &Uniforms) -> Color {
-    let zoom = 30.0;  // Zoom factor to adjust the scale of the cell pattern
-    let ox = 50.0;    // Offset x in the noise map
-    let oy = 50.0;    // Offset y in the noise map
-    let x = fragment.vertex_position.x;
-    let y = fragment.vertex_position.y;
-  
-    // Use a cellular noise function to create the plant cell pattern
-    let cell_noise_value = uniforms.noise.get_noise_2d(x * zoom + ox, y * zoom + oy).abs();
-  
-    // Define different shades of green for the plant cells
-    let cell_color_1 = Color::new(85, 107, 47);   // Dark olive green
-    let cell_color_2 = Color::new(124, 252, 0);   // Light green
-    let cell_color_3 = Color::new(34, 139, 34);   // Forest green
-    let cell_color_4 = Color::new(173, 255, 47);  // Yellow green
-  
-    // Use the noise value to assign a different color to each cell
-    let final_color = if cell_noise_value < 0.15 {
-      cell_color_1
-    } else if cell_noise_value < 0.7 {
-      cell_color_2
-    } else if cell_noise_value < 0.75 {
-      cell_color_3
-    } else {
-      cell_color_4
-    };
-  
-    // Adjust intensity to simulate lighting effects (optional)
-    final_color * fragment.intensity
-}
-  
-fn lava_shader(fragment: &Fragment, uniforms: &Uniforms) -> Color {
-    // Base colors for the lava effect
-    let bright_color = Color::new(255, 240, 0); // Bright orange (lava-like)
-    let dark_color = Color::new(130, 20, 0);   // Darker red-orange
-  
-    // Get fragment position
-    let position = Vec3::new(
-      fragment.vertex_position.x,
-      fragment.vertex_position.y,
-      fragment.depth
-    );
-  
-    // Base frequency and amplitude for the pulsating effect
-    let base_frequency = 0.2;
-    let pulsate_amplitude = 0.5;
-    let t = uniforms.time as f32 * 0.01;
-  
-    // Pulsate on the z-axis to change spot size
-    let pulsate = (t * base_frequency).sin() * pulsate_amplitude;
-  
-    // Apply noise to coordinates with subtle pulsating on z-axis
-    let zoom = 1000.0; // Constant zoom factor
-    let noise_value1 = uniforms.noise.get_noise_3d(
-      position.x * zoom,
-      position.y * zoom,
-      (position.z + pulsate) * zoom
-    );
-    let noise_value2 = uniforms.noise.get_noise_3d(
-      (position.x + 1000.0) * zoom,
-      (position.y + 1000.0) * zoom,
-      (position.z + 1000.0 + pulsate) * zoom
-    );
-    let noise_value = (noise_value1 + noise_value2) * 0.5;  // Averaging noise for smoother transitions
-  
-    // Use lerp for color blending based on noise value
-    let color = dark_color.lerp(&bright_color, noise_value);
-  
-    color * fragment.intensity
+
+/// Función para simular ruido en las nubes
+fn cloud_noise(x: f32, y: f32, time: f32) -> f32 {
+    let mut rng = rand::thread_rng();
+    let noise = (x * 10.0 + rng.gen::<f32>()).sin() * (y * 10.0 + rng.gen::<f32>() + time).cos();
+    noise.abs()
 }
