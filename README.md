@@ -22,6 +22,10 @@
 
 ![Image](images/basketball.gif)
 
+# Shader 7 - Planeta con nubes
+
+![Image](images/planeta7.gif)
+
 Happy coding!
 
 ---
